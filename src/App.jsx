@@ -1,45 +1,88 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import ProductCard from "./ProductCard";
+import ProductDetails from "./ProductDetails";
 import Cart from "./Cart";
 
-import iphone from "./assets/iphone-card.jpg";
-import pc from "./assets/pc.jpg";
-import laptop from "./assets/laptop-card.jpg";
-import watch from "./assets/smartwatch-card.jpg";
-import headset from "./assets/headset.jpg";
-import powerbank from "./assets/powerbank.jpg";
-import biometric from "./assets/biometric.jpg";
-import drone from "./assets/drone.jpg";
-import wifi from "./assets/wifi.jpg";
-import speaker from "./assets/speaker.jpg";
-import ps5 from "./assets/ps5.jpg";
-import dslr from "./assets/DSLR.jpg";
-
 function App() {
+  const [reviews, setReviews] = useState({
+    // example default review for demonstration (optional)
+    // 1: [
+    //   { rating: 5, text: "Excellent product!" },
+    //   { rating: 4, text: "Great value." }
+    // ]
+  });
+
+  const [products, setProducts] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // ✅ NEW STATE
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+
+  // ✅ API FETCH
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        setLoading(true);
+
+        const res = await fetch("https://fakestoreapi.com/products");
+        const data = await res.json();
+
+        const updatedProducts = data.map(item => ({
+          ...item,
+          stock: Math.floor(Math.random() * 10) + 1
+        }));
+
+        setProducts(updatedProducts);
+      } catch (err) {
+        setError("Failed to load products ❌");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProducts();
+  }, []);
+
+  // ✅ NEW useEffect (RESIZE + CLEANUP)
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
   const navigate = useNavigate();
-  const [showMenu, setShowMenu] = useState(false);
 
-  const [products] = useState([
-    { id: 1, name: "IPhone 17 Pro", price: 89999, image: iphone },
-    { id: 2, name: "PC", price: 111999, image: pc },
-    { id: 3, name: "Dell Laptop", price: 36999, image: laptop },
-    { id: 4, name: "Smart Watch", price: 1999, image: watch },
-    { id: 5, name: "Boat Headset", price: 2999, image: headset },
-    { id: 6, name: "PowerBank", price: 1599, image: powerbank },
-    { id: 7, name: "Biometric Device", price: 7999, image: biometric },
-    { id: 8, name: "Drone", price: 21099, image: drone },
-    { id: 9, name: "Wifi Router", price: 2099, image: wifi },
-    { id: 10, name: "Bluetooth Speaker", price: 7099, image: speaker },
-    { id: 11, name: "PS5 Console", price: 99999, image: ps5 },
-    { id: 12, name: "DSLR Camera", price: 45999, image: dslr },
-  ]);
-
+  const [showLogin, setShowLogin] = useState(false);
   const [cart, setCart] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+
+  const openProductModal = (product) => {
+    setSelectedProduct(product);
+  };
+
+  const closeProductModal = () => {
+    setSelectedProduct(null);
+  };
 
   const handleAddToCart = (product) => {
     setCart((prev) => {
       const exists = prev.find((item) => item.id === product.id);
+      const currentQty = exists ? exists.qty : 0;
+
+      if (currentQty >= product.stock) {
+        alert("Out of stock ❌");
+        return prev;
+      }
+
       if (exists) {
         return prev.map((item) =>
           item.id === product.id
@@ -47,15 +90,23 @@ function App() {
             : item
         );
       }
+
       return [...prev, { ...product, qty: 1 }];
     });
   };
 
   const handleIncrease = (id) => {
     setCart((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, qty: item.qty + 1 } : item
-      )
+      prev.map((item) => {
+        if (item.id === id) {
+          if (item.qty >= item.stock) {
+            alert("Max stock reached");
+            return item;
+          }
+          return { ...item, qty: item.qty + 1 };
+        }
+        return item;
+      })
     );
   };
 
@@ -78,75 +129,63 @@ function App() {
   return (
     <div style={styles.container}>
 
+      {/* OPTIONAL: SHOW WIDTH */}
+      <p style={{ textAlign: "center" }}>
+        Screen Width: {windowWidth}px
+      </p>
+
       {/* HEADER */}
       <header style={styles.header}>
-
-        {/* TOP BAR */}
         <div style={styles.topBar}>
-          
-          {/* LEFT EMPTY (for balance) */}
           <div />
 
-          {/* TITLE */}
           <h1
             style={styles.titleCenter}
             onClick={() => navigate("/")}
           >
-            AuraTech
+            STORE-EX
           </h1>
 
-          {/* RIGHT SIDE */}
           <div style={styles.topRight}>
             <span
               style={styles.signIn}
-              onClick={() => setShowMenu(true)}
+              onClick={() => setShowLogin(true)}
             >
               Hello, Sign in
             </span>
 
-            <span
-              style={styles.cart}
-              onClick={() => navigate("/cart")}
-            >
-              🛒 Cart
-              {totalItems > 0 && (
-                <span style={styles.badge}>{totalItems}</span>
-              )}
-            </span>
+            <div
+  style={styles.cartWrapper}
+  onClick={() => navigate("/cart")}
+>
+  🛒 Cart
+
+  {totalItems > 0 && (
+    <span style={styles.badge}>{totalItems}</span>
+  )}
+</div>
           </div>
-
         </div>
-
-        <p style={styles.subtitle}>
-          Modern Solutions Powered By Innovation, Built For Your Future.
-        </p>
-
       </header>
 
-      {/* LOGIN SIDEBAR */}
-      {showMenu && (
-        <div style={styles.overlay} onClick={() => setShowMenu(false)}>
-          <div style={styles.sidebar} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.closeBtn} onClick={() => setShowMenu(false)}>✕</div>
+      {/* LOGIN */}
+      {showLogin && (
+        <div style={styles.overlay}>
+          <div style={styles.sidePanel}>
+            <span style={styles.close} onClick={() => setShowLogin(false)}>
+              ✕
+            </span>
 
-            <h2>Login</h2>
+            <h2 style={styles.heading}>Login</h2>
 
-            <input placeholder="Enter Name" style={styles.input} />
-            <input placeholder="Enter Email" style={styles.input} />
-            <input type="password" placeholder="Enter Password" style={styles.input} />
+            <input placeholder="Name" style={styles.input} />
+            <input placeholder="Email" style={styles.input} />
+            <input type="password" placeholder="Password" style={styles.input} />
 
-            <button
-              style={styles.loginBtn}
-              onClick={() => {
-                alert("Login Successful ✅");
-                setShowMenu(false);
-              }}
-            >
-              Login
-            </button>
+            <button style={styles.loginBtn}>Login</button>
 
-            <p style={styles.signupText}>
-              New User? <span style={styles.signupLink}>Sign Up</span>
+            <p style={styles.signup}>
+              New User? <span style={styles.link}>Sign Up</span>
             </p>
           </div>
         </div>
@@ -155,17 +194,40 @@ function App() {
       {/* ROUTES */}
       <Routes>
         <Route
+  path="/product/:id"
+  element={
+    <ProductDetails
+      products={products}
+      reviews={reviews}
+      setReviews={setReviews}
+    />
+  }
+/>
+        <Route
           path="/"
           element={
-            <div style={styles.grid} className="product-grid">
-              {products.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  {...product}
-                  onAddToCart={handleAddToCart}
-                />
-              ))}
-            </div>
+            <>
+              {loading && <h2 style={{ textAlign: "center" }}>Loading...</h2>}
+              {error && <h2 style={{ textAlign: "center", color: "red" }}>{error}</h2>}
+
+              {!loading && !error && (
+                <div style={styles.grid}>
+                  {products.map(product => (
+                    <ProductCard
+                      key={product.id}
+                      id={product.id}
+                      name={product.title}
+                      price={product.price}
+                      image={product.image}
+                      stock={product.stock}
+                      cart={cart}
+                      onAddToCart={handleAddToCart}
+                      onOpen={() => openProductModal(product)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           }
         />
 
@@ -182,6 +244,45 @@ function App() {
         />
       </Routes>
 
+      {selectedProduct && (
+        <div style={styles.modalOverlay} onClick={closeProductModal}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <button style={styles.modalClose} onClick={closeProductModal}>✕</button>
+
+            <div style={styles.modalProductTop}>
+              <img src={selectedProduct.image} alt={selectedProduct.title} style={styles.modalImage} />
+              <div>
+                <h2>{selectedProduct.title}</h2>
+                <p style={styles.modalPrice}>₹{selectedProduct.price}</p>
+                <p>Stock: {selectedProduct.stock}</p>
+
+                <div style={styles.modalButtons}>
+                  <button
+                    style={styles.modalAdd}
+                    onClick={() => {
+                      handleAddToCart(selectedProduct);
+                    }}
+                  >
+                    Add to Cart
+                  </button>
+                  <button
+                    style={styles.modalBuy}
+                    onClick={() => alert(`Price: ₹${selectedProduct.price}`)}
+                  >
+                    Buy Now
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <ProductDetails
+              product={selectedProduct}
+              reviews={reviews}
+              setReviews={setReviews}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -210,7 +311,7 @@ const styles = {
 
   titleCenter: {
     fontSize: "2.2rem",
-    fontWeight: "800",
+    fontWeight: "750",
     textAlign: "center",
     cursor: "pointer",
   },
@@ -224,38 +325,128 @@ const styles = {
 
   signIn: {
     cursor: "pointer",
-    fontSize: "15px", // ✅ slightly bigger
+    fontSize: "15px",
     fontWeight: "600",
   },
 
-  cart: {
-    position: "relative",
-    cursor: "pointer",
-    fontSize: "15px", // ✅ slightly bigger
-    fontWeight: "600",
+  card: {
+  position: "relative",
+  background: "#fff",
+  padding: "15px",
+  borderRadius: "10px",
+  textAlign: "center",
+  boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
+  
+  display: "flex",              // 🔥 ADD
+  flexDirection: "column",      // 🔥 ADD
+  justifyContent: "space-between", // 🔥 ADD
+  height: "100%"                // 🔥 ADD
   },
 
   badge: {
-    position: "absolute",
-    top: "-6px",
-    right: "-10px",
-    background: "red",
-    color: "#fff",
-    borderRadius: "50%",
-    padding: "2px 6px",
-    fontSize: "11px",
-  },
-
-  subtitle: {
-    marginTop: "8px",
-    textAlign: "center",
-    fontSize: "13px",
-    color: "#cbd5e1",
+  position: "absolute",
+  top: "-6px",
+  right: "-12px",
+  background: "red",
+  color: "#fff",
+  borderRadius: "50%",
+  minWidth: "18px",
+  height: "18px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "11px",
+  fontWeight: "bold",
+  zIndex: 10,
   },
 
   grid: {
     display: "grid",
     gap: "20px",
+    gridTemplateColumns: "repeat(5, 1fr)"
+  },
+
+  modalOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
+    background: "rgba(0,0,0,0.5)",
+    backdropFilter: "blur(4px)",
+    zIndex: 1000,
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center"
+  },
+
+  modalContent: {
+    width: "88%",
+    maxWidth: "960px",
+    background: "#fff",
+    borderRadius: "12px",
+    padding: "20px",
+    position: "relative",
+    boxShadow: "0 15px 40px rgba(0,0,0,0.4)",
+    maxHeight: "90vh",
+    overflowY: "auto"
+  },
+
+  modalClose: {
+    position: "absolute",
+    top: "12px",
+    right: "12px",
+    background: "#e11d48",
+    color: "#fff",
+    border: "none",
+    padding: "8px 10px",
+    borderRadius: "50%",
+    cursor: "pointer"
+  },
+
+  modalProductTop: {
+    display: "flex",
+    gap: "20px",
+    marginBottom: "20px",
+    alignItems: "flex-start"
+  },
+
+  modalImage: {
+    width: "180px",
+    height: "180px",
+    objectFit: "contain",
+    borderRadius: "10px",
+    border: "1px solid #e5e7eb"
+  },
+
+  modalPrice: {
+    fontSize: "1.6rem",
+    fontWeight: "700",
+    color: "orangered"
+  },
+
+  modalButtons: {
+    display: "flex",
+    gap: "10px",
+    marginTop: "12px"
+  },
+
+  modalAdd: {
+    background: "#10b981",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    padding: "10px 14px",
+    cursor: "pointer"
+  },
+
+  modalBuy: {
+    background: "#f59e0b",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    padding: "10px 14px",
+    cursor: "pointer"
   },
 
   overlay: {
@@ -264,47 +455,69 @@ const styles = {
     left: 0,
     width: "100%",
     height: "100%",
-    background: "rgba(0,0,0,0.4)",
+    background: "rgba(0,0,0,0.3)",
     display: "flex",
     justifyContent: "flex-end",
+    zIndex: 999
   },
 
-  sidebar: {
-    width: "300px",
+  sidePanel: {
+    width: "350px",
     height: "100%",
     background: "#fff",
-    padding: "20px",
+    padding: "25px",
+    position: "relative",
+    boxShadow: "-2px 0 10px rgba(0,0,0,0.2)",
   },
 
-  closeBtn: {
-    textAlign: "right",
-    cursor: "pointer",
+  close: {
+    position: "absolute",
+    top: "15px",
+    right: "15px",
+    fontSize: "20px",
+    cursor: "pointer"
+  },
+
+  heading: {
+    marginBottom: "20px"
   },
 
   input: {
     width: "100%",
-    padding: "10px",
+    padding: "12px",
     marginBottom: "12px",
+    borderRadius: "6px",
+    border: "1px solid #ccc"
   },
 
   loginBtn: {
     width: "100%",
     padding: "12px",
-    background: "#2563eb",
+    background: "#2f6fed",
     color: "#fff",
     border: "none",
-  },
-
-  signupText: {
-    marginTop: "15px",
-    textAlign: "center",
-  },
-
-  signupLink: {
-    color: "#2563eb",
+    borderRadius: "6px",
     cursor: "pointer",
-    fontWeight: "600",
+    fontWeight: "600"
   },
+
+  signup: {
+    marginTop: "15px",
+    textAlign: "center"
+  },
+
+  link: {
+    color: "#2f6fed",
+    cursor: "pointer",
+    fontWeight: "500"
+  },
+  cartWrapper: {
+  position: "relative",
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+ },
 };
 
 export default App;
