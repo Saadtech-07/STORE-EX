@@ -11,7 +11,7 @@ function ProductCard({ id, name, price, image, stock, cart, onAddToCart, onOpen 
     alert(`Price: ₹${price}`);
   };
 
-  const availableStock = (stock || 0) - qtyInCart;
+  const availableStock = Math.max((stock || 0) - qtyInCart, 0);
 
   return (
     <div

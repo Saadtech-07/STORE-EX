@@ -1,16 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import ProductCard from "./ProductCard";
 import ProductDetails from "./ProductDetails";
 import Cart from "./Cart";
+import useLocalStorage from "./hooks/useLocalStorage";
 
 function App() {
   const [reviews, setReviews] = useState({
-    // example default review for demonstration (optional)
-    // 1: [
-    //   { rating: 5, text: "Excellent product!" },
-    //   { rating: 4, text: "Great value." }
-    // ]
   });
 
   const [products, setProducts] = useState([]);
@@ -20,6 +16,8 @@ function App() {
 
   // ✅ NEW STATE
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef(null);
 
   // ✅ API FETCH
   useEffect(() => {
@@ -27,17 +25,26 @@ function App() {
       try {
         setLoading(true);
 
-        const res = await fetch("https://fakestoreapi.com/products");
-        const data = await res.json();
+        const res = await fetch("https://dummyjson.com/products");
+        if (!res.ok) {
+          throw new Error(`API error: ${res.status} ${res.statusText}`);
+        }
 
-        const updatedProducts = data.map(item => ({
+        const data = await res.json();
+        // dummyjson returns { products: [ ... ], total, skip, limit }
+        const apiProducts = data.products || [];
+
+        const updatedProducts = apiProducts.map(item => ({
           ...item,
-          stock: Math.floor(Math.random() * 10) + 1
+          stock: Math.floor(Math.random() * 10) + 1,
+          image: item.thumbnail || (item.images && item.images[0]) || ""
         }));
 
         setProducts(updatedProducts);
+        setError(null);
       } catch (err) {
-        setError("Failed to load products ❌");
+        console.error("Failed to load products:", err);
+        setError("Failed to load products ❌ (check console for details)");
       } finally {
         setLoading(false);
       }
@@ -62,7 +69,7 @@ function App() {
   const navigate = useNavigate();
 
   const [showLogin, setShowLogin] = useState(false);
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useLocalStorage("cart", []);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
   const openProductModal = (product) => {
@@ -126,6 +133,21 @@ function App() {
 
   const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
 
+  const filteredProducts = products.filter((product) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      product.title.toLowerCase().includes(q) ||
+      (product.description && product.description.toLowerCase().includes(q))
+    );
+  });
+
+  useEffect(() => {
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, []);
+
   return (
     <div style={styles.container}>
 
@@ -141,7 +163,15 @@ function App() {
 
           <h1
             style={styles.titleCenter}
-            onClick={() => navigate("/")}
+            onClick={() => {
+              setSearchQuery("");
+              navigate("/");
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+              setTimeout(() => {
+                searchInputRef.current?.focus();
+              }, 100);
+            }}
+            title="Click to return to homepage"
           >
             STORE-EX
           </h1>
@@ -165,6 +195,48 @@ function App() {
   )}
 </div>
           </div>
+        </div>
+
+        <div style={styles.searchBar}>
+          <input
+            ref={searchInputRef}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                // Trigger search on Enter key
+                setTimeout(() => {
+                  const resultSection = document.querySelector('[data-products-grid]');
+                  if (resultSection) {
+                    resultSection.scrollIntoView({ behavior: 'smooth' });
+                  }
+                }, 100);
+              }
+            }}
+            placeholder="Search for products, brands and more"
+            style={styles.searchInput}
+            autoComplete="off"
+          />
+
+          <button
+            style={styles.searchButton}
+            onClick={() => {
+              // Trigger search when button is clicked
+              if (searchQuery.trim()) {
+                setTimeout(() => {
+                  const resultSection = document.querySelector('[data-products-grid]');
+                  if (resultSection) {
+                    resultSection.scrollIntoView({ behavior: 'smooth' });
+                  }
+                }, 100);
+              } else {
+                alert("Please enter a search term");
+              }
+            }}
+          >
+            Search
+          </button>
         </div>
       </header>
 
@@ -211,20 +283,31 @@ function App() {
               {error && <h2 style={{ textAlign: "center", color: "red" }}>{error}</h2>}
 
               {!loading && !error && (
-                <div style={styles.grid}>
-                  {products.map(product => (
-                    <ProductCard
-                      key={product.id}
-                      id={product.id}
-                      name={product.title}
-                      price={product.price}
-                      image={product.image}
-                      stock={product.stock}
-                      cart={cart}
-                      onAddToCart={handleAddToCart}
-                      onOpen={() => openProductModal(product)}
-                    />
-                  ))}
+                <div style={styles.grid} data-products-grid>
+                  {filteredProducts.length === 0 ? (
+                    <div style={styles.noProductsContainer}>
+                      <p style={styles.noProductsTitle}>❌ No Products Found</p>
+                      <p style={styles.noProductsMessage}>
+                        {searchQuery 
+                          ? `Sorry, we couldn't find any products matching "${searchQuery}". Try searching with different keywords.`
+                          : "Start searching for your favorite products!"}
+                      </p>
+                    </div>
+                  ) : (
+                    filteredProducts.map(product => (
+                      <ProductCard
+                        key={product.id}
+                        id={product.id}
+                        name={product.title}
+                        price={product.price}
+                        image={product.image}
+                        stock={product.stock}
+                        cart={cart}
+                        onAddToCart={handleAddToCart}
+                        onOpen={() => openProductModal(product)}
+                      />
+                    ))
+                  )}
                 </div>
               )}
             </>
@@ -314,6 +397,10 @@ const styles = {
     fontWeight: "750",
     textAlign: "center",
     cursor: "pointer",
+    transition: "all 0.2s ease",
+    borderRadius: "8px",
+    padding: "8px 12px",
+    userSelect: "none"
   },
 
   topRight: {
@@ -518,6 +605,63 @@ const styles = {
   alignItems: "center",
   gap: "6px",
  },
+
+  searchBar: {
+    marginTop: "16px",
+    display: "flex",
+    gap: "8px",
+    maxWidth: "700px",
+    width: "100%",
+    marginLeft: "auto",
+    marginRight: "auto"
+  },
+
+  searchInput: {
+    flex: 1,
+    padding: "10px 14px",
+    borderRadius: "8px",
+    border: "1px solid #ccc",
+    fontSize: "16px",
+    color: "#0f172a",
+    background: "#ffffff",
+    outline: "none",
+    lineHeight: "1.4",
+    boxShadow: "inset 0 0 0 1px #cbd5e1"
+  },
+
+  searchButton: {
+    background: "#ff9900",
+    border: "none",
+    color: "#fff",
+    padding: "10px 16px",
+    borderRadius: "8px",
+    cursor: "pointer",
+    fontWeight: "700",
+    transition: "background 0.2s ease"
+  },
+
+  noProductsContainer: {
+    gridColumn: "1 / -1",
+    textAlign: "center",
+    padding: "40px 20px",
+    background: "#fff",
+    borderRadius: "10px",
+    border: "2px dashed #cbd5e1"
+  },
+
+  noProductsTitle: {
+    fontSize: "24px",
+    fontWeight: "700",
+    color: "#e11d48",
+    marginBottom: "10px",
+    margin: "0 0 10px 0"
+  },
+
+  noProductsMessage: {
+    fontSize: "16px",
+    color: "#64748b",
+    margin: "0"
+  },
 };
 
 export default App;

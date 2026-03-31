@@ -42,9 +42,9 @@ function Cart({ cart, onIncrease, onDecrease, onRemove }) {
                 <h3 style={styles.name}>{item.name}</h3>
 
                 <p style={styles.qty}>
-                  <button onClick={() => onDecrease(item.id)}>-</button>
+                  <button style={styles.qtyButton} onClick={() => onDecrease(item.id)}>-</button>
                   <span style={styles.qtyText}>{item.qty}</span>
-                  <button onClick={() => onIncrease(item.id)}>+</button>
+                  <button style={styles.qtyButton} onClick={() => onIncrease(item.id)}>+</button>
                 </p>
 
                 <p style={styles.remove} onClick={() => onRemove(item.id)}>
@@ -173,6 +173,10 @@ const styles = {
 
   qty: {
     margin: "8px 0"
+  },
+
+  qtyButton: {
+    fontWeight: "700"
   },
 
   qtyText: {
