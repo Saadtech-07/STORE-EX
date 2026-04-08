@@ -6,22 +6,48 @@ export function cartReducer(state, action) {
   switch (action.type) {
 
     case "ADD_TO_CART": {
-      const exists = state.cart.find(item => item.id === action.payload.id);
+  const existing = state.cart.find(
+    (item) => item.id === action.payload.id
+  );
 
-      if (exists) {
-        return {
-          ...state,
-          cart: state.cart.map(item =>
-            item.id === action.payload.id
-              ? { ...item, qty: item.qty + 1 }
-              : item
-          )
-        };
-      }
+  if (existing) {
+    return {
+      ...state,
+      cart: state.cart.map((item) =>
+        item.id === action.payload.id
+          ? { ...item, qty: item.qty + action.payload.qty }
+          : item
+      ),
+    };
+  }
 
+  return {
+    ...state,
+    cart: [...state.cart, action.payload],
+  };
+}
+
+    case "INCREASE": {
       return {
         ...state,
-        cart: [...state.cart, { ...action.payload, qty: 1 }]
+        cart: state.cart.map(item =>
+          item.id === action.payload.id
+            ? { ...item, qty: item.qty + 1 }
+            : item
+        )
+      };
+    }
+
+    case "DECREASE": {
+      return {
+        ...state,
+        cart: state.cart
+          .map(item =>
+            item.id === action.payload.id
+              ? { ...item, qty: item.qty - 1 }
+              : item
+          )
+          .filter(item => item.qty > 0)
       };
     }
 
@@ -32,18 +58,13 @@ export function cartReducer(state, action) {
       };
     }
 
-    case "UPDATE_QTY": {
-      return {
-        ...state,
-        cart: state.cart.map(item =>
-          item.id === action.payload.id
-            ? { ...item, qty: action.payload.qty }
-            : item
-        )
-      };
-    }
-
     default:
       return state;
-  }
+    
+    case "CLEAR_CART":
+      return {
+        ...state,
+        cart: []
+      };  
+    }
 }

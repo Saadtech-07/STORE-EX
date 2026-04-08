@@ -1,388 +1,379 @@
-import { useEffect, useRef, useState } from "react";
-import { Routes, Route, useNavigate } from "react-router-dom";
-import ProductCard from "./components/Product/ProductCard";
-import ProductDetails from "./pages/ProductDetails/ProductDetails";
-import Cart from "./components/Cart/Cart";
+import { useState, useEffect, useRef, useReducer, useMemo, useCallback } from "react";
+import { Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
+
 import useLocalStorage from "./hooks/useLocalStorage";
-import styles from "./styles/appStyles";
-import Landing from "./pages/Landing/Landing";
-import { useLocation } from "react-router-dom";
+import ProductCard from "./components/ProductCard";
+import ProductDetails from "./pages/ProductDetails";
+import Cart from "./components/Cart";
+import Login from "./pages/Login";
+import Landing from "./pages/Landing";
+
+import { cartReducer } from "./reducers/cartReducer";
+import { useTheme } from "./context/ThemeContext";
+import { useAuth } from "./context/AuthContext";
+
+import Footer from "./components/Footer";
 
 function App() {
-  const [reviews, setReviews] = useState({
+  const [products, setProducts] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchRef = useRef(null);
+  const [windowSize, setWindowSize] = useState({
+    width: typeof window !== "undefined" ? window.innerWidth : 0,
+    height: typeof window !== "undefined" ? window.innerHeight : 0,
   });
 
-  const [products, setProducts] = useState([]);
+  const [reviews, setReviews] = useState({});
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { theme, toggleTheme } = useTheme();
+
+  const navigate = useNavigate();
   const location = useLocation();
+
   const isLandingPage = location.pathname === "/";
 
-  // ✅ NEW STATE
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-  const [searchQuery, setSearchQuery] = useState("");
-  const searchInputRef = useRef(null);
+  const [storedCart, setStoredCart] = useLocalStorage("cart", []);
 
-  // ✅ API FETCH
+  const [state, dispatch] = useReducer(cartReducer, {
+    cart: storedCart
+  });
+
+  const cart = state.cart;
+
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef();
+
+  const { user, logout } = useAuth();
+
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setLoading(true);
-
-        const res = await fetch("https://dummyjson.com/products");
-        if (!res.ok) {
-          throw new Error(`API error: ${res.status} ${res.statusText}`);
-        }
-
-        const data = await res.json();
-        // dummyjson returns { products: [ ... ], total, skip, limit }
-        const apiProducts = data.products || [];
-
-        const updatedProducts = apiProducts.map(item => ({
-          ...item,
-          stock: Math.floor(Math.random() * 10) + 1,
-          image: item.thumbnail || (item.images && item.images[0]) || ""
-        }));
-
-        setProducts(updatedProducts);
-        setError(null);
-      } catch (err) {
-        console.error("Failed to load products:", err);
-        setError("Failed to load products ❌ (check console for details)");
-      } finally {
-        setLoading(false);
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowMenu(false);
       }
     };
 
-    fetchProducts();
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
   }, []);
+  useEffect(() => {
+    if (location.pathname === "/home" && searchRef.current) {
+      searchRef.current.focus();
+    }
+  }, [location.pathname]);
 
-  // ✅ NEW useEffect (RESIZE + CLEANUP)
   useEffect(() => {
     const handleResize = () => {
-      setWindowWidth(window.innerWidth);
+      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
     };
 
     window.addEventListener("resize", handleResize);
-
-    return () => {
-      window.removeEventListener("resize", handleResize);
-    };
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const navigate = useNavigate();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
 
-  const [showLogin, setShowLogin] = useState(false);
-  const [cart, setCart] = useLocalStorage("cart", []);
-  const [selectedProduct, setSelectedProduct] = useState(null);
+  useEffect(() => {
+    setStoredCart(state.cart);
+  }, [state.cart]);
 
-  const openProductModal = (product) => {
-    setSelectedProduct(product);
-  };
+  useEffect(() => {
+  setLoading(true);
 
-  const closeProductModal = () => {
-    setSelectedProduct(null);
-  };
+  fetch("https://dummyjson.com/products/search?q=phone")
+    .then(res => {
+      if (!res.ok) throw new Error("API failed");
+      return res.json();
+    })
+    .then(data => {
+      const updated = data.products.map(p => ({
+        ...p,
+        stock: Math.floor(Math.random() * 10) + 1,
+        image: p.thumbnail
+      }));
 
-  const handleAddToCart = (product) => {
-    setCart((prev) => {
-      const exists = prev.find((item) => item.id === product.id);
-      const currentQty = exists ? exists.qty : 0;
-
-      if (currentQty >= product.stock) {
-        alert("Out of stock ❌");
-        return prev;
-      }
-
-      if (exists) {
-        return prev.map((item) =>
-          item.id === product.id
-            ? { ...item, qty: item.qty + 1 }
-            : item
-        );
-      }
-
-      return [...prev, { ...product, qty: 1 }];
+      setProducts(updated);
+      setLoading(false);
+    })
+    .catch(err => {
+      console.error("Fetch error:", err);
+      setProducts([]);
+      setLoading(false);
     });
-  };
+
+}, []);
 
   const handleIncrease = (id) => {
-    setCart((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          if (item.qty >= item.stock) {
-            alert("Max stock reached");
-            return item;
-          }
-          return { ...item, qty: item.qty + 1 };
-        }
-        return item;
-      })
-    );
+    dispatch({ type: "INCREASE", payload: { id } });
   };
 
   const handleDecrease = (id) => {
-    setCart((prev) =>
-      prev
-        .map((item) =>
-          item.id === id ? { ...item, qty: item.qty - 1 } : item
-        )
-        .filter((item) => item.qty > 0)
-    );
-  };
+  const item = cart.find(i => i.id === id);
 
-  const handleRemoveFromCart = (id) => {
-    setCart((prev) => prev.filter((item) => item.id !== id));
-  };
+  dispatch({ type: "DECREASE", payload: { id } });
+
+  if (item) {
+    setProducts(prev =>
+      prev.map(p =>
+        p.id === id
+          ? { ...p, stock: p.stock + 1 } 
+          : p
+      )
+    );
+  }
+};
+
+  const handleRemove = (id) => {
+  const item = cart.find(i => i.id === id);
+
+  dispatch({ type: "REMOVE_FROM_CART", payload: { id } });
+
+  if (item) {
+    setProducts(prev =>
+      prev.map(p =>
+        p.id === id
+          ? { ...p, stock: p.stock + item.qty } // ✅ restore stock
+          : p
+      )
+    );
+  }
+};
+
+  const handleAddToCart = useCallback((product) => {
+  if (!product.qty || product.qty <= 0) return;
+
+  dispatch({ type: "ADD_TO_CART", payload: product });
+
+  setProducts(prev =>
+  prev.map(p => {
+    if (p.id === product.id) {
+      if (p.stock <= 0) return p; // prevent over-reduction
+
+      return {
+        ...p,
+        stock: Math.max(p.stock - product.qty, 0)
+      };
+    }
+    return p;
+  })
+);
+
+  setSelectedProduct(prev =>
+    prev && prev.id === product.id
+      ? { ...prev, stock: Math.max(prev.stock - product.qty, 0) }
+      : prev
+  );
+
+}, [dispatch]);
 
   const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
 
-  const filteredProducts = products.filter((product) => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      product.title.toLowerCase().includes(q) ||
-      (product.description && product.description.toLowerCase().includes(q))
-    );
-  });
+  const filteredProducts = useMemo(() => {
+    const query = searchQuery.toLowerCase();
 
-  useEffect(() => {
-    if (searchInputRef.current) {
-      searchInputRef.current.focus();
-    }
-  }, []);
+    return products.filter(p =>
+      p.title.toLowerCase().includes(query)
+    );
+  }, [products, searchQuery]);
+
+  const isCartPage = location.pathname === "/cart";
 
   return (
-    <div style={styles.container}>
+    <div className="min-h-screen flex flex-col bg-slate-100 dark:bg-slate-900">
 
-      {/* OPTIONAL: SHOW WIDTH */}
-      <p style={{ textAlign: "center" }}>
-        Screen Width: {windowWidth}px
-      </p>
+      {isCartPage && (
+        <div className="bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-200 text-sm py-2 text-center border-b border-slate-200 dark:border-slate-700">
+          Screen size: {windowSize.width}px × {windowSize.height}px
+        </div>
+      )}
 
-      {/* HEADER */}
       {!isLandingPage && (
-      <header style={styles.header}>
-        <div style={styles.topBar}>
-          <div />
+        <header className="bg-gradient-to-r from-slate-900 to-slate-800 text-white py-6 shadow-md">
 
-          <h1
-            style={styles.titleCenter}
-            onClick={() => {
-              setSearchQuery("");
-              navigate("/home");
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-              setTimeout(() => {
-                searchInputRef.current?.focus();
-              }, 100);
-            }}
-      
-            title="Click to return to homepage"
-          >
-            STORE-EX
-          </h1>
+          <div className="flex justify-between items-center px-6">
 
-          <div style={styles.topRight}>
-            <span
-              style={styles.signIn}
-              onClick={() => setShowLogin(true)}
+            <div className="w-1/3"></div>
+
+            <h1
+              className="text-2xl font-bold text-center cursor-pointer w-1/3"
+              onClick={() =>{
+                setSearchQuery(""); 
+                navigate("/home")}}
+
             >
-              Hello, Sign in
-            </span>
+              STORE-EX
+            </h1>
 
-            <div
-  style={styles.cartWrapper}
-  onClick={() => navigate("/cart")}
->
-  🛒 Cart
+            <div className="w-1/3 flex justify-end items-center gap-5">
 
-  {totalItems > 0 && (
-    <span style={styles.badge}>{totalItems}</span>
-  )}
-</div>
+
+              <button
+                onClick={toggleTheme}
+                className={`w-12 h-6 flex items-center rounded-full p-1 transition ${
+                  theme === "dark" ? "bg-gray-600" : "bg-gray-300"
+                }`}
+              >
+                <div
+                  className={`bg-white w-5 h-5 rounded-full shadow-md transform transition ${
+                    theme === "dark" ? "translate-x-6" : ""
+                  }`}
+                />
+              </button>
+
+              <div className="relative" ref={menuRef}>
+                <span
+                  className="cursor-pointer hover:text-orange-400"
+                  onClick={() => {
+                    if (!user) navigate("/login");
+                    else setShowMenu(prev => !prev);
+                  }}
+                >
+                  {user ? `Hello, ${user.name}` : "Hello, Sign in"}
+                </span>
+
+                {user && showMenu && (
+                  <div className="absolute right-0 mt-3 w-44 bg-slate-800 text-white rounded-xl shadow-lg p-4 z-50">
+                    <p className="cursor-pointer mb-3">Manage Account</p>
+                    <p
+                      className="cursor-pointer text-red-400"
+                      onClick={() => {
+                        logout();
+                        dispatch({ type: "CLEAR_CART" }); 
+                        setStoredCart([]); 
+                        setShowMenu(false);
+                        window.location.href = "/home";
+                      }}
+                    >
+                      Logout
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div
+                onClick={() => navigate("/cart")}
+                className="relative cursor-pointer flex items-center gap-1"
+              >
+                🛒 Cart
+                {totalItems > 0 && (
+                  <span className="absolute -top-2 -right-3 bg-red-500 text-white text-[10px] px-1.5 py-[2px] rounded-full font-bold">
+                    {totalItems}
+                  </span>
+                )}
+              </div>
+
+            </div>
           </div>
-        </div>
 
-        <div style={styles.searchBar}>
-          <input
-            ref={searchInputRef}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                // Trigger search on Enter key
-                setTimeout(() => {
-                  const resultSection = document.querySelector('[data-products-grid]');
-                  if (resultSection) {
-                    resultSection.scrollIntoView({ behavior: 'smooth' });
-                  }
-                }, 100);
-              }
-            }}
-            placeholder="Search for products, brands and more"
-            style={styles.searchInput}
-            autoComplete="off"
-          />
+          <div className="mt-4 flex justify-center px-6">
+  <input
+    ref={searchRef}
+    value={searchQuery}
+    onChange={(e) => setSearchQuery(e.target.value)}
+    className="
+      w-full max-w-xl p-3 rounded-lg outline-none transition
+      bg-white text-black placeholder-gray-500 border border-gray-300
+      focus:ring-2 focus:ring-orange-400
 
-          <button
-            style={styles.searchButton}
-            onClick={() => {
-              // Trigger search when button is clicked
-              if (searchQuery.trim()) {
-                setTimeout(() => {
-                  const resultSection = document.querySelector('[data-products-grid]');
-                  if (resultSection) {
-                    resultSection.scrollIntoView({ behavior: 'smooth' });
-                  }
-                }, 100);
-              } else {
-                alert("Please enter a search term");
-              }
-            }}
-          >
-            Search
-          </button>
-        </div>
-      </header>
+      dark:bg-slate-700 dark:text-white dark:placeholder-gray-300
+      dark:border-slate-600 dark:focus:ring-orange-500
+      "
+      placeholder="Search for products..."
+    />
+    </div>
+    </header>
     )}
 
-      {/* LOGIN */}
-      {showLogin && (
-        <div style={styles.overlay}>
-          <div style={styles.sidePanel}>
-            <span style={styles.close} onClick={() => setShowLogin(false)}>
-              ✕
-            </span>
+      <div className="flex-grow">
+        <Routes>
 
-            <h2 style={styles.heading}>Login</h2>
+        <Route path="/" element={<Landing />} />
 
-            <input placeholder="Name" style={styles.input} />
-            <input placeholder="Email" style={styles.input} />
-            <input type="password" placeholder="Password" style={styles.input} />
+        <Route
+        path="/home"
+        element={
+        <div className="px-6 py-6">
 
-            <button style={styles.loginBtn}>Login</button>
-
-            <p style={styles.signup}>
-              New User? <span style={styles.link}>Sign Up</span>
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* ROUTES */}
-      <Routes>
-
-  {/* PRODUCT DETAILS */}
-  <Route
-    path="/product/:id"
-    element={
-      <ProductDetails
-        products={products}
-        reviews={reviews}
-        setReviews={setReviews}
-      />
-    }
-  />
-
-  {/* ✅ LANDING PAGE */}
-  <Route path="/" element={<Landing />} />
-
-  {/* ✅ HOME (YOUR EXISTING CODE) */}
-  <Route
-    path="/home"
-    element={
-      <>
-        {loading && <h2 style={{ textAlign: "center" }}>Loading...</h2>}
-        {error && <h2 style={{ textAlign: "center", color: "red" }}>{error}</h2>}
-
-        {!loading && !error && (
-          <div style={styles.grid} data-products-grid>
-            {filteredProducts.length === 0 ? (
-              <div style={styles.noProductsContainer}>
-                <p style={styles.noProductsTitle}>❌ No Products Found</p>
-                <p style={styles.noProductsMessage}>
-                  {searchQuery 
-                    ? `Sorry, we couldn't find any products matching "${searchQuery}". Try searching with different keywords.`
-                    : "Start searching for your favorite products!"}
-                </p>
-              </div>
-            ) : (
-              filteredProducts.map(product => (
-                <ProductCard
-                  key={product.id}
-                  id={product.id}
-                  name={product.title}
-                  price={product.price}
-                  image={product.image}
-                  stock={product.stock}
-                  cart={cart}
-                  onAddToCart={handleAddToCart}
-                  onOpen={() => openProductModal(product)}
-                />
-              ))
-            )}
-          </div>
+        {(searchQuery || filteredProducts.length === 0) && (
+        <p
+        className="text-blue-600 cursor-pointer mb-4"
+        onClick={() => setSearchQuery("")}
+        >
+        ← Back to Home
+        </p>
         )}
-      </>
-    }
-  />
 
-  {/* CART */}
-  <Route
-    path="/cart"
-    element={
-      <Cart
-        cart={cart}
-        onIncrease={handleIncrease}
-        onDecrease={handleDecrease}
-        onRemove={handleRemoveFromCart}
-      />
-    }
-  />
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
 
-</Routes>
-
-      {selectedProduct && (
-        <div style={styles.modalOverlay} onClick={closeProductModal}>
-          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <button style={styles.modalClose} onClick={closeProductModal}>✕</button>
-
-            <div style={styles.modalProductTop}>
-              <img src={selectedProduct.image} alt={selectedProduct.title} style={styles.modalImage} />
-              <div>
-                <h2>{selectedProduct.title}</h2>
-                <p style={styles.modalPrice}>₹{selectedProduct.price}</p>
-                <p>Stock: {selectedProduct.stock}</p>
-
-                <div style={styles.modalButtons}>
-                  <button
-                    style={styles.modalAdd}
-                    onClick={() => {
-                      handleAddToCart(selectedProduct);
-                    }}
-                  >
-                    Add to Cart
-                  </button>
-                  <button
-                    style={styles.modalBuy}
-                    onClick={() => alert(`Price: ₹${selectedProduct.price}`)}
-                  >
-                    Buy Now
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <ProductDetails
-              product={selectedProduct}
-              reviews={reviews}
-              setReviews={setReviews}
+        {loading ? (
+          <p className="col-span-full text-center text-gray-500">
+            Loading products...
+          </p>
+        ) : filteredProducts.length === 0 ? (
+          <p className="col-span-full text-center text-gray-500">
+            No products found....
+          </p>
+        ) : (
+          filteredProducts.map(p => (
+            <ProductCard
+              key={p.id}
+              id={p.id}
+              name={p.title}
+              price={p.price}
+              image={p.image}
+              stock={p.stock}
+              onOpen={() => {
+                setSelectedProduct(p);
+                navigate(`/product/${p.id}`);
+              }}
             />
-          </div>
-        </div>
-      )}
+          ))
+        )}
+
+      </div>
+    </div>
+  }
+/>
+
+          <Route
+            path="/product/:id"
+            element={
+              <ProductDetails
+                product={selectedProduct}
+                products={products}
+                reviews={reviews}
+                setReviews={setReviews}
+                onAddToCart={handleAddToCart}
+              />
+            }
+          />
+
+          <Route
+          path="/cart"
+          element={
+          user ? (
+          <Cart
+          cart={cart}
+          onIncrease={handleIncrease}
+          onDecrease={handleDecrease}
+          onRemove={handleRemove}
+          />
+          ) : (
+          <Navigate to="/login" />
+          )
+          }
+          />
+
+          <Route path="/login" element={<Login />} />
+
+        </Routes>
+      </div>
+
+      {!isLandingPage && <Footer />}
     </div>
   );
 }
